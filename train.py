@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '6'
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 import datetime
 import numpy as np
@@ -52,9 +52,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--root_path', type=str,
-                        default='/20TB/fyh/data/project_TransUNet/data/Synapse/train_npz', help='root dir for data')
+                        default='', help='root dir for data')
     parser.add_argument('--volume_path', type=str,
-                    default='/20TB/fyh/data/project_TransUNet/data/Synapse/test_vol_h5', help='root dir for validation volume data')  # for acdc volume_path=root_dir
+                    default='', help='root dir for validation volume data')  # for acdc volume_path=root_dir
     parser.add_argument('--dataset', type=str,
                         default='Synapse', help='experiment_name')  # 突触
     parser.add_argument('--list_dir', type=str,
@@ -82,23 +82,12 @@ if __name__ == "__main__":
                         default='R50-ViT-B_16', help='select one vit model')
     parser.add_argument('--vit_patches_size', type=int,
                         default=16, help='vit_patches_size, default is 16')
- 
     args = parser.parse_args()
     config_vit = CONFIGS_ViT_seg[args.vit_name]
     config_vit.n_classes = args.num_classes
     config_vit.n_skip = args.n_skip
     print("##########################################"+backbone+"#######################################################")
     model = Dilateformer(img_size=448,in_chans=3,embed_dim=96,att_mode = [True, True, False, False],num_classes=num_classes).cuda()
-    
-    
-    dataset_name = args.dataset
-    dataset_config = {
-        'Synapse': {
-            'root_path': '/20TB/fyh/data/project_TransUNet/data/Synapse/train_npz',
-            'list_dir': '/20TB/data/Synapse/lists_Synapse',
-            'num_classes': 9,
-        },
-    }
 
 
     time_str = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M')
@@ -182,3 +171,4 @@ if __name__ == "__main__":
         no_improve_count = fit_one_epoch(model_train, model, loss_history, eval_callback, optimizer, epoch,
                                          epoch_step, epoch_step_val, gen, gen_val, unFreeze_epoch, loss_fuc,
                                          num_classes, save_dir, no_improve_count)
+
