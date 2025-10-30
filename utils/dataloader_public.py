@@ -179,9 +179,13 @@ def augmentationimage(jpgs,labels):
             label = np.asarray(label)
             labels[i,j,:,:] = label
     return jpgs,labels
+
+
 class UnetDataset(Dataset):
-    def __init__(self, annotation_lines, input_shape, num_classes, train, dataset_path):
+    def __init__(self, annotation_lines, input_shape, num_classes, train, dataset_path, seed=42):
         super(UnetDataset, self).__init__()
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
         self.annotation_lines = annotation_lines
         self.length = len(annotation_lines)
         self.input_shape = input_shape
@@ -205,16 +209,17 @@ class UnetDataset(Dataset):
     def __getitem__(self, index):
         annotation_line = self.annotation_lines[index]
         name = annotation_line.split()[0]
-        r_move_x = random.randint(-20, 20)
-        r_move_y = random.randint(-20, 20)
-        r_rotate_angle = random.randint(-10, 10)  # 旋转方向取（-10，10）中的随机整数值，正为逆时针，负为顺势针
+        r_move_x = int(self.rng.integers(-20, 20))
+        r_move_y = int(self.rng.integers(-20, 20))
+        r_rotate_angle = int(self.rng.integers(-10, 10))  # 旋转方向取（-10，10）中的随机整数值，正为逆时针，负为顺势针
         m_move = np.float32([[1, 0, r_move_x], [0, 1, r_move_y]])  # 生成位移矩阵
-        random_flag_erasing = random.uniform(0, 1)
-        random_flag_move = random.uniform(0, 1)
-        random_flag_rotate = random.uniform(0, 1)
-        random_flag_distota = random.uniform(0, 1)
-        random_flag_str = random.uniform(0, 1)
-        seed = random.randint(0, 1000000)
+        random_flag_erasing = self.rng.random()
+        random_flag_move = self.rng.random()
+        random_flag_rotate = self.rng.random()
+        random_flag_distota = self.rng.random()
+        random_flag_str = self.rng.random()
+        seed_for_distort = self.seed + index
+
         # -------------------------------#
         #   从文件中读取图像
         # -------------------------------#
@@ -238,10 +243,10 @@ class UnetDataset(Dataset):
             jpg = cv2.warpAffine(jpg, m_rotate, (jpg.shape[0], jpg.shape[1]))  # 图像旋转
         if random_flag_distota > 0.7:
             jpg = Image.fromarray(jpg)
-            jpg = Distort(seed)(jpg)
+            jpg = Distort(seed_for_distort)(jpg)
             jpg = np.asarray(jpg)
-        #if random_flag_str > 0.5:
-            #jpg = straug_auto(jpg, 0.5)
+        if random_flag_str > 0.5:
+            jpg = straug_auto(jpg, 0.5)
         #cv2.imwrite("flag.jpg", jpg)
         
         jpg = np.expand_dims(jpg, -1).repeat(3, axis=-1)      # [448, 448, 3]
@@ -252,8 +257,7 @@ class UnetDataset(Dataset):
             if(self.train):
                 label = cv2.imread(os.path.join(self.dataset_path, 'Annotations/train/' + str(i), name + '.png'), 0)
             else:
-                label = cv2.imread(os.path.join(self.dataset_path, 'Annotations/test/' + str(i), name + '.png'), 0)
-            #print('label shape',label)
+                label = cv2.imread(os.path.join(self.dataset_path, 'Annotations/val/' + str(i), name + '.png'), 0)
             label = cv2.resize(label, self.input_shape, interpolation=cv2.INTER_NEAREST)      # [448, 448]
             if random_flag_move > 0.5:
                 label = cv2.warpAffine(label, m_move, (label.shape[0], label.shape[1]))  # 图像位移
@@ -261,7 +265,7 @@ class UnetDataset(Dataset):
                 label = cv2.warpAffine(label, m_rotate, (label.shape[0], label.shape[1]))  # 图像旋转
             if random_flag_distota > 0.7:
                 label = Image.fromarray(label)
-                label = Distort(seed)(label)
+                label = Distort(seed_for_distort)(label)
                 label = np.asarray(label)
             label = label.copy()
             label[label > 125] = 255
@@ -269,95 +273,12 @@ class UnetDataset(Dataset):
             label = label / 255    # 映射到0、1区间
             label_list.append(label)
         seg_labels = np.stack(label_list, axis=0)
-
+        
         return jpg, seg_labels
-
 
     def rand(self, a=0, b=1):
         return np.random.rand() * (b - a) + a
 
-    # def get_random_data(self, image, label, input_shape, jitter=.3, hue=.1, sat=0.7, val=0.3, random=True):
-    #     image = cvtColor(image)
-    #     label = Image.fromarray(label)
-    #     # label   = Image.fromarray(np.array(label))
-    #     # ------------------------------#
-    #     #   获得图像的高宽与目标高宽
-    #     # ------------------------------#
-    #     iw, ih = image.size
-    #     h, w = input_shape
-    #
-    #     if not random:
-    #         iw, ih = image.size
-    #         scale = min(w / iw, h / ih)
-    #         nw = int(iw * scale)
-    #         nh = int(ih * scale)
-    #
-    #         image = image.resize((nw, nh), Image.BICUBIC)
-    #         new_image = Image.new('RGB', [w, h], (128, 128, 128))
-    #         new_image.paste(image, ((w - nw) // 2, (h - nh) // 2))
-    #
-    #         label = label.resize((nw, nh), Image.NEAREST)
-    #         new_label = Image.new('L', [w, h], (0))
-    #         new_label.paste(label, ((w - nw) // 2, (h - nh) // 2))
-    #         return new_image, new_label
-    #
-    #     # ------------------------------------------#
-    #     #   对图像进行缩放并且进行长和宽的扭曲
-    #     # ------------------------------------------#
-    #     new_ar = iw / ih * self.rand(1 - jitter, 1 + jitter) / self.rand(1 - jitter, 1 + jitter)
-    #     scale = self.rand(0.25, 2)
-    #     if new_ar < 1:
-    #         nh = int(scale * h)
-    #         nw = int(nh * new_ar)
-    #     else:
-    #         nw = int(scale * w)
-    #         nh = int(nw / new_ar)
-    #     image = image.resize((nw, nh), Image.BICUBIC)
-    #     label = label.resize((nw, nh), Image.NEAREST)
-    #
-    #     # ------------------------------------------#
-    #     #   翻转图像
-    #     # ------------------------------------------#
-    #     flip = self.rand() < .5
-    #     if flip:
-    #         image = image.transpose(Image.FLIP_LEFT_RIGHT)
-    #         label = label.transpose(Image.FLIP_LEFT_RIGHT)
-    #
-    #     # ------------------------------------------#
-    #     #   将图像多余的部分加上灰条
-    #     # ------------------------------------------#
-    #     dx = int(self.rand(0, w - nw))
-    #     dy = int(self.rand(0, h - nh))
-    #     new_image = Image.new('RGB', (w, h), (128, 128, 128))
-    #     new_label = Image.new('L', (w, h), (0))
-    #     new_image.paste(image, (dx, dy))
-    #     new_label.paste(label, (dx, dy))
-    #     image = new_image
-    #     label = new_label
-    #
-    #     image_data = np.array(image, np.uint8)
-    #     # ---------------------------------#
-    #     #   对图像进行色域变换
-    #     #   计算色域变换的参数
-    #     # ---------------------------------#
-    #     r = np.random.uniform(-1, 1, 3) * [hue, sat, val] + 1
-    #     # ---------------------------------#
-    #     #   将图像转到HSV上
-    #     # ---------------------------------#
-    #     hue, sat, val = cv2.split(cv2.cvtColor(image_data, cv2.COLOR_RGB2HSV))
-    #     dtype = image_data.dtype
-    #     # ---------------------------------#
-    #     #   应用变换
-    #     # ---------------------------------#
-    #     x = np.arange(0, 256, dtype=r.dtype)
-    #     lut_hue = ((x * r[0]) % 180).astype(dtype)
-    #     lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
-    #     lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
-    #
-    #     image_data = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
-    #     image_data = cv2.cvtColor(image_data, cv2.COLOR_HSV2RGB)
-    #
-    #     return image_data, label
 
 
 # DataLoader中collate_fn使用
