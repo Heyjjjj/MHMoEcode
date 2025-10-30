@@ -5,8 +5,8 @@ MHMoE is a novel deep learning architecture specifically designed for medical im
 ## Prepare Datasets
 You can refer to the  [https://vindr.ai/ribcxr]
 
-
 Expected Structure
+```bash
 Data_Annotations/
 ├── train.txt          # Training file list
 ├── test.txt           # Testing file list  
@@ -15,9 +15,10 @@ Data_Annotations/
 │   └── image2.png
 └── Annotations/       # Ground truth masks
     ├── 0/
-        └── image1.png
+    │   └── image1.png
     ├── 1/
     └── 2/
+```
 
 ## Training
 python train.py 
