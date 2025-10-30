@@ -20,6 +20,10 @@ Data_Annotations/
     └── 2/
 ```
 
+
+## Requirements
+pip install -r requirements.txt
+
 ## Training
 python train.py 
 ## Testing&Evaluation
