@@ -23,30 +23,10 @@ class ExpertMLP(nn.Module):
 
     def forward(self, x):
         x = self.fc1(x)
-        if torch.isnan(x).any():
-            print("mlp_fc1_x tensor contains NaN")
-        if torch.isinf(x).any():
-            print("mlp_fc1_x tensor contains Inf")
         x = self.act(x)
-        if torch.isnan(x).any():
-            print("mlp_act_x tensor contains NaN")
-        if torch.isinf(x).any():
-            print("mlp_act_xx tensor contains Inf")
         x = self.drop(x)
-        if torch.isnan(x).any():
-            print("drop_x tensor contains NaN")
-        if torch.isinf(x).any():
-            print("drop_x tensor contains Inf")
         x = self.fc2(x)
-        if torch.isnan(x).any():
-            print("mlp_fc2_x tensor contains NaN")
-        if torch.isinf(x).any():
-            print("mlp_fc2_x tensor contains Inf")
         x = self.drop(x)
-        if torch.isnan(x).any():
-            print("drop_x tensor contains NaN")
-        if torch.isinf(x).any():
-            print("x tensor contains Inf")
         return x
 
 class SparseDispatcher(object):
@@ -306,11 +286,6 @@ class Adapter_MoElayer(nn.Module):
             load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
         else:
             load = self._gates_to_load(gates)
-        
-        if torch.isnan(gates).any() or torch.isinf(gates).any():
-            print("Warning: gates contains NaN or Inf")
-        if torch.isnan(load).any() or torch.isinf(load).any():
-            print("Warning: load contains NaN or Inf")
             
         return gates, load
 
@@ -332,15 +307,6 @@ class Adapter_MoElayer(nn.Module):
         #print('x_global',x_global)
 
         gates, load = self.noisy_top_k_gating(x_global, self.training)
-        if torch.isnan(gates).any():
-            print("gates tensor contains NaN")
-        if torch.isinf(gates).any():
-            print("gates tensor contains Inf")
-            
-        if torch.isnan(load).any():
-            print("load tensor contains NaN")
-        if torch.isinf(load).any():
-            print("load tensor contains Inf")
 
         # calculate importance loss
         importance = gates.sum(0)
@@ -349,50 +315,21 @@ class Adapter_MoElayer(nn.Module):
         loss *= loss_coef
 
         dispatcher = SparseDispatcher(self.num_experts, gates)
-        #print('x',x.size())
         expert_inputs = dispatcher.dispatch(x)
-        #print(expert_inputs[0].size())
         gates = dispatcher.expert_to_gates()
         expert_outputs = []
         for i in range(self.num_experts):
-        
             if len(expert_inputs[i]) == 0: continue
-            
-            
-            if torch.isnan(expert_inputs[i]).any():
-                print("expert_input tensor contains NaN")
-            if torch.isinf(expert_inputs[i]).any():
-                print("expert_input tensor contains Inf")
-            
             if self.expert_type == 'conv':
                 expert_input = rearrange(expert_inputs[i], '(n) h w c -> n c h w')
                 expert_output = self.adapter_experts[i](expert_input)
-
-
-                if torch.isnan(expert_output).any():
-                    print("expert_output tensor contains NaN")
-                if torch.isinf(expert_output).any():
-                    print("expert_output tensor contains Inf")
-                
                 expert_output = rearrange(expert_output, 'n c h w -> n (c h w)')
             else:
                 expert_output = self.adapter_experts[i](expert_inputs[i])
-            
             expert_outputs.append(expert_output)
-            
-        if torch.isnan(expert_output).any():
-            print("y_expert_output tensor contains NaN")
-        if torch.isinf(expert_output).any():
-            print("y_expert_output tensor contains Inf")
 
         y = dispatcher.combine(expert_outputs)
         y = rearrange(y, 'b (c h w) -> b h w c', h=h, w=w, c=c)
-        
-        
-        if torch.isnan(y).any():
-            print("expert_y tensor contains NaN")
-        if torch.isinf(y).any():
-            print("expert_y tensor contains Inf")
 
         return y, loss
 
@@ -551,7 +488,6 @@ class MLP_MoElayer(nn.Module):
             noise_stddev = self.softplus(raw_noise_stddev) + noise_epsilon
             noise_stddev = torch.clamp(noise_stddev, min=1e-6, max=10.0)
             
-            # ����������������������С
             noise = torch.randn_like(clean_logits) * noise_stddev
             noise = torch.clamp(noise, -10.0, 10.0)
             
@@ -560,22 +496,18 @@ class MLP_MoElayer(nn.Module):
         else:
             logits = clean_logits
         
-        # ���� logits �ķ�Χ�Է�ֹ��ֵ����
         logits = torch.clamp(logits, -50.0, 50.0)
         
-        # ���� top k+1 ��ר��
         top_logits, top_indices = logits.topk(min(self.k + 1, self.num_experts), dim=1)
         top_k_logits = top_logits[:, :self.k]
         top_k_indices = top_indices[:, :self.k]
         
-        # ʹ�ø��ȶ��� softmax ʵ��
         top_k_gates = F.softmax(top_k_logits, dim=1)
         
         zeros = torch.zeros_like(logits, requires_grad=True)
         gates = zeros.scatter(1, top_k_indices, top_k_gates)
         
         if self.noisy_gating and self.k < self.num_experts and train:
-            # ���㸺��
             load = self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits).sum(0)
         else:
             load = self._gates_to_load(gates)
@@ -591,73 +523,51 @@ class MLP_MoElayer(nn.Module):
         y: a tensor with shape [batch_size, height, width, channels]
         loss: a scalar. This should be added into the overall training loss of the model.
         """
-        # ����ԭʼ��״
         B, H, W, C  = x.shape
  
         
-        # ��������Ƿ����쳣ֵ
+
         if torch.isnan(x).any() or torch.isinf(x).any():
             print("Warning: Input contains NaN or Inf values")
             x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=0.0)
         
-        # չƽ�ռ�ά�ȣ���Ϊ [batch_size, height*width, channels]
+
         x_flat = x.reshape(B, H*W, C)
-        
-        # ʹ��ȫ�����������ſ�Ȩ��
+
         x_global = torch.mean(x, dim=[1, 2])  # [B, C]
         
-        # ���ȫ�������Ƿ����쳣ֵ
         if torch.isnan(x_global).any() or torch.isinf(x_global).any():
             print("Warning: x_global contains NaN or Inf")
             x_global = torch.nan_to_num(x_global, nan=0.0, posinf=1.0, neginf=0.0)
         
         gates, load = self.noisy_top_k_gating(x_global, self.training)
         
-        # ������Ҫ����ʧ
+
         importance = gates.sum(0)
         loss = self.cv_squared(importance) + self.cv_squared(load)
         loss = torch.clamp(loss, 0.0, 1000.0)
         loss *= loss_coef
-        
-        # ��һ��չƽΪ��ά [batch_size * height * width, channels]
+
         x_flat = x_flat.reshape(B * H * W, C)
-        
-        # ��ʼ�����
         output = torch.zeros_like(x_flat)
-        
-        # ����ÿ��ר��
+
         for expert_idx in range(self.num_experts):
-            # ��ȡѡ��ǰר�ҵ���������
             mask = (gates[:, expert_idx] > 0)
             
             if mask.any():
-                # ��չ mask ��ƥ��չƽ������
                 mask_expanded = mask.unsqueeze(1).expand(-1, H*W).reshape(-1)
-                
-                # ��ȡѡ��ǰר�ҵ�����
                 expert_input = x_flat[mask_expanded]
-                
-                # Ӧ��ר��
                 expert_output = self.experts[expert_idx](expert_input)
                 
-                # ���ר������Ƿ����쳣ֵ
                 if torch.isnan(expert_output).any() or torch.isinf(expert_output).any():
                     print(f"Warning: expert_output for expert {expert_idx} contains NaN or Inf")
                     expert_output = torch.nan_to_num(expert_output, nan=0.0, posinf=1.0, neginf=0.0)
-                
-                # ��ȡ�ſ�Ȩ��
+
                 gate_weights = gates[mask, expert_idx]
-                
-                # ��չ�ſ�Ȩ����ƥ��ר���������״
                 gate_weights_expanded = gate_weights.unsqueeze(1).expand(-1, H*W).reshape(-1, 1)
-                
-                # ��Ȩר�����
                 weighted_output = expert_output * gate_weights_expanded
-                
-                # ����Ȩ������ӵ��������
                 output[mask_expanded] += weighted_output
         
-        # �ָ�ԭʼ��״
         output = output.reshape(B, H, W, C)
 
         
